@@ -4,6 +4,7 @@ package com.workbuddy.cluster.controller;
 import com.workbuddy.cluster.service.NodeRegistry;
 import com.workbuddy.cluster.service.WOLService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -13,6 +14,7 @@ public class NodeStatusController {
 
     private final NodeRegistry registry;
     private final WOLService wolService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @GetMapping("/nodes")
     public Object allNodes() {
@@ -26,14 +28,9 @@ public class NodeStatusController {
     }
 
     @PostMapping("/{node}/off")
-    public String powerOff(@PathVariable String node,
-                           @RequestParam String url) {
-        try {
-            new java.net.URL(url).openConnection().getInputStream();
-            return "Shutdown request sent to " + node;
-        } catch (Exception e) {
-            return "Failed: " + e.getMessage();
-        }
+    public String powerOff(@PathVariable String node){
+        messagingTemplate.convertAndSend("/topic/commands/" + node, "POWER_OFF");
+        return "Power off sent to " + node;
     }
 }
 
