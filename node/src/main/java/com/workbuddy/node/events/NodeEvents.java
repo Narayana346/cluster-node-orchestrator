@@ -1,17 +1,23 @@
 package com.workbuddy.node.events;
 
 import com.workbuddy.node.component.SystemInfoProvider;
+import com.workbuddy.node.model.CommandMessage;
 import com.workbuddy.node.model.NodeInfo;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.MediaType;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
 import org.springframework.stereotype.Service;
 
 import java.lang.reflect.Type;
+import java.util.concurrent.CompletableFuture;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class NodeEvents {
     private static final String NODE_ONLINE_PATH = "/app/node/online";
@@ -28,31 +34,41 @@ public class NodeEvents {
     public void subscribe(StompSession session, StompHeaders headers, String nodeName) {
         session.subscribe(NODE_COMMAND_PATH + nodeName, new StompFrameHandler() {
             @Override
-            public Type getPayloadType(StompHeaders headers) {
-                return String.class;
+            public Type getPayloadType(@NonNull StompHeaders headers) {
+                return headers.getContentType().includes(MediaType.APPLICATION_JSON)
+                        ? CommandMessage.class
+                        : String.class;
             }
 
             @Override
-            public void handleFrame(StompHeaders headers, @Nullable Object payload) {
-                String command = (String) payload;
-                System.out.println("Received command: " + command);
-                switch (command){
-                    case "POWER_OFF":
-                        powerOff();
-                        break;
-                    default:
-                        System.out.println("Unknown command: " + command);
-                        break;
+            public void handleFrame(@NonNull StompHeaders headers, @Nullable Object payload) {
+                CommandMessage command = (CommandMessage) payload;
+                log.info("Received command: {}", command);
+                if ((command != null ? command.getCommand() : null) != null) {
+                    switch (command.getCommand()){
+                        case POWER_OFF -> CompletableFuture.runAsync(() -> powerOff());
+                        case RESTART -> CompletableFuture.runAsync(() -> restart());
+                        default -> log.info("Unknown command: {}" , command);
+                    }
                 }
             }
         });
     }
 
-    private void powerOff(){
+    private void powerOff() {
+        execute("sudo", "/usr/sbin/poweroff");
+    }
+
+    private void restart() {
+        execute("sudo", "/usr/sbin/reboot");
+    }
+
+    private void execute(String... cmd) {
         try {
-            Runtime.getRuntime().exec("sudo /usr/sbin/poweroff");
+            new ProcessBuilder(cmd).start();
         } catch (Exception e) {
-            System.out.println("Power off failed: " + e.getMessage());
+            System.err.println("Command failed");
+            log.warn("Command Error: {}",e.getMessage());
         }
     }
 }

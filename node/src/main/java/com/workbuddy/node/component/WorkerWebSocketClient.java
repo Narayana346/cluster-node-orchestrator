@@ -2,61 +2,54 @@ package com.workbuddy.node.component;
 
 import com.workbuddy.node.events.NodeEvents;
 import jakarta.annotation.PostConstruct;
-import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.stomp.*;
-import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
-import java.lang.reflect.Type;
-
 @Component
+@Slf4j
 public class WorkerWebSocketClient {
 
     private final String masterUrl;
     private final String nodeName;
+    private final WebSocketStompClient stompClient;
     private final NodeEvents nodeEvents;
-    private final WebSocketStompClient client;
 
-    public WorkerWebSocketClient(
-            @Value("${worker.master-url}") String masterUrl,
-            @Value("${worker.node-name}") String nodeName,
-            NodeEvents nodeEvents
-    ) {
+    public WorkerWebSocketClient(WebSocketStompClient stompClient,
+                                 @Value("${worker.node-name}") String nodeName,
+                                 @Value("${worker.master-url}") String masterUrl,
+                                 NodeEvents nodeEvents) {
         this.masterUrl = masterUrl;
+        this.stompClient = stompClient;
         this.nodeName = nodeName;
         this.nodeEvents = nodeEvents;
-        this.client = new WebSocketStompClient(new StandardWebSocketClient());
     }
 
     @PostConstruct
     public void connect() {
         try {
-            // 👉 Modern JSON converter (Spring 7.x compatible)
-            client.setMessageConverter(new JacksonJsonMessageConverter());
-
             // 👉 Use async connect
-            client.connectAsync(masterUrl, new StompSessionHandlerAdapter() {
+            stompClient.connectAsync(masterUrl, new StompSessionHandlerAdapter() {
                 @Override
-                public void afterConnected(StompSession session, StompHeaders headers) {
-                    System.out.println("Connected to master");
+                public void afterConnected(@NonNull StompSession session, @NonNull StompHeaders headers) {
+                    log.info("{} Connected to master", nodeName);
                     nodeEvents.nodeOnline(session,headers, nodeName);
                     nodeEvents.subscribe(session,headers, nodeName);
 
                 }
 
                 @Override
-                public void handleTransportError(StompSession session, Throwable exception) {
-                    System.out.println("WebSocket error: " + exception.getMessage());
+                public void handleTransportError(@NonNull StompSession session, @NonNull Throwable exception) {
+                    log.warn("WebSocket error: {}", exception.getMessage());
                     reconnect();
                 }
             });
 
         } catch (Exception e) {
-            System.out.println("Connection failed: " + e.getMessage());
+            log.warn("Connection failed: {}", e.getMessage());
             reconnect();
         }
     }
@@ -66,7 +59,7 @@ public class WorkerWebSocketClient {
             Thread.sleep(5000); // wait 5 seconds
         } catch (InterruptedException ignored) {}
 
-        System.out.println("Reconnecting...");
+        log.info("Reconnecting...");
         connect();
     }
 }

@@ -1,6 +1,7 @@
 package com.workbuddy.node.component;
 
 import com.workbuddy.node.model.NodeInfo;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -9,10 +10,9 @@ import java.lang.management.OperatingSystemMXBean;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.Enumeration;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 @Component
+@Slf4j
 public class SystemInfoProvider {
     private final OperatingSystemMXBean osBean = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
     private final Runtime runtime = Runtime.getRuntime();
@@ -66,8 +66,8 @@ public class SystemInfoProvider {
 
                 Enumeration<InetAddress> addresses = ni.getInetAddresses();
                 while (addresses.hasMoreElements()) {
-                    InetAddress addr = addresses.nextElement();
-                    String ip = addr.getHostAddress();
+                    InetAddress adder = addresses.nextElement();
+                    String ip = adder.getHostAddress();
                     if (ip.startsWith("100.")) {
                         return ip;
                     }
@@ -80,22 +80,35 @@ public class SystemInfoProvider {
 
     private String getMac() {
         try {
-            InetAddress localHost = InetAddress.getLocalHost();
-            NetworkInterface ni = NetworkInterface.getByInetAddress(localHost);
-            if (ni == null) return "NA";
+            Enumeration<NetworkInterface> interfaces =
+                    NetworkInterface.getNetworkInterfaces();
 
-            byte[] mac = ni.getHardwareAddress();
-            if (mac == null) return "NA";
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface ni = interfaces.nextElement();
 
-            return IntStream.range(0, mac.length)
-                    .mapToObj(i -> String.format("%02X", mac[i]))
-                    .reduce((a, b) -> a + ":" + b)
-                    .orElse("NA");
+                if (ni.isLoopback() || ni.isVirtual() || !ni.isUp()) {
+                    continue;
+                }
 
+                byte[] mac = ni.getHardwareAddress();
+                if (mac == null || mac.length == 0) {
+                    continue;
+                }
+
+                StringBuilder sb = new StringBuilder();
+                for (byte b : mac) {
+                    sb.append(String.format("%02X:", b));
+                }
+                sb.setLength(sb.length() - 1); // remove last ':'
+
+                return sb.toString();
+            }
         } catch (Exception e) {
-            return "NA";
+            log.error("Failed to get MAC address", e);
         }
+        return "NA";
     }
+
 
     /* ===================== CPU & MEMORY ===================== */
 
