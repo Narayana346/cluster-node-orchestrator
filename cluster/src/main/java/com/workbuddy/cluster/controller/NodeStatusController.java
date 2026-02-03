@@ -1,6 +1,8 @@
 package com.workbuddy.cluster.controller;
 
 
+import com.workbuddy.cluster.model.CommandMessage;
+import com.workbuddy.cluster.model.NodeCommand;
 import com.workbuddy.cluster.service.NodeRegistry;
 import com.workbuddy.cluster.service.WOLService;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +31,8 @@ public class NodeStatusController {
 
     @PostMapping("/{node}/off")
     public String powerOff(@PathVariable String node){
-        messagingTemplate.convertAndSend("/topic/commands/" + node, "POWER_OFF");
+        CommandMessage commandMessage = new CommandMessage(NodeCommand.POWER_OFF, System.currentTimeMillis());
+        messagingTemplate.convertAndSend("/topic/commands/" + node, commandMessage);
         return "Power off sent to " + node;
     }
 }
